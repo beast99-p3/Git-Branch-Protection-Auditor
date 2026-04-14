@@ -13,6 +13,16 @@ GITHUB_ORG=your-org-name
 # YOUR Personal Access Token from https://github.com/settings/tokens
 GITHUB_TOKEN=ghp_yourtoken123456789...
 
+# Optional secure secret manager patterns
+# GITHUB_TOKEN_FILE=/run/secrets/github_token
+# GITHUB_TOKEN_COMMAND=aws secretsmanager get-secret-value --secret-id github/auditor/token --query SecretString --output text
+
+# Optional GitHub App authentication
+# GITHUB_AUTH_MODE=app
+# GITHUB_APP_ID=123456
+# GITHUB_APP_INSTALLATION_ID=789012
+# GITHUB_APP_PRIVATE_KEY_FILE=/run/secrets/github_app_private_key.pem
+
 # Leave as false for your first run
 CREATE_ISSUES=false
 ```
@@ -63,7 +73,7 @@ python validate_setup.py
 
 This checks:
 - ✅ Your `.env` is configured correctly
-- ✅ Your GitHub token works
+- ✅ Your GitHub token/App auth works
 - ✅ You can access the organization
 - ✅ All Python packages are installed
 

@@ -25,3 +25,6 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# Project docs to keep local
+Techinical Updates.md

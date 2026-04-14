@@ -21,6 +21,12 @@ import json
 import csv
 import time
 from datetime import datetime
+from auth_utils import (
+    load_env_file,
+    build_headers,
+    get_github_token_and_mode,
+    validate_token_scopes,
+)
 
 # ============================================================================
 # STEP 1: Load Environment Variables from .env File
@@ -28,16 +34,8 @@ from datetime import datetime
 # We don't want to hardcode sensitive information like API tokens in the code.
 # Instead, we read them from a .env file which is kept private (in .gitignore)
 
-if os.path.exists(".env"):
+if load_env_file(".env"):
     print("📄 Loading configuration from .env file...")
-    with open(".env", "r") as f:
-        for line in f:
-            line = line.strip()
-            # Skip empty lines and comments (lines starting with #)
-            if line and not line.startswith("#") and "=" in line:
-                # Split on the first '=' to handle values that might contain '='
-                key, value = line.split("=", 1)
-                os.environ[key.strip()] = value.strip()
 
 # ============================================================================
 # STEP 2: Configuration - Who and What to Audit
@@ -50,12 +48,9 @@ GITHUB_ORG = os.getenv("GITHUB_ORG")
 # The script prioritizes GITHUB_ORG if both are set
 GITHUB_USERNAME = os.getenv("GITHUB_USERNAME")
 
-# Your Personal Access Token - this is like a password for API access
-# Generate one at: https://github.com/settings/tokens
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
-
 # Base URL for GitHub's REST API (v3)
 API_URL = "https://api.github.com"
+HEADERS = {}
 
 # ============================================================================
 # STEP 3: Define SOC 2 Compliance Controls We're Checking
@@ -83,17 +78,6 @@ REQUIRED_CONTROLS = {
     # Control 5: Linear History (Best Practice)
     # Prevents messy merge commits, keeps history clean and traceable
     "non_fast_forward": "Integrity: Linear History (Optional but recommended)"
-}
-
-# ============================================================================
-# STEP 4: Set Up API Authentication Headers
-# ============================================================================
-# Every request to GitHub needs these headers to authenticate and specify API version
-
-HEADERS = {
-    "Authorization": f"Bearer {GITHUB_TOKEN}",  # Your secret token for authentication
-    "Accept": "application/vnd.github+json",     # Tell GitHub we want JSON responses
-    "X-GitHub-Api-Version": "2022-11-28"        # API version (ensures consistent behavior)
 }
 
 def get_all_repos_org(org):
@@ -342,10 +326,18 @@ def main():
     # ========================================================================
     # STEP 1: Verify we have the required credentials
     # ========================================================================
-    if not GITHUB_TOKEN:
-        print("❌ ERROR: GITHUB_TOKEN is not set!")
-        print("   Generate a token at: https://github.com/settings/tokens")
+    try:
+        github_token, auth_mode = get_github_token_and_mode()
+    except RuntimeError as auth_error:
+        print(f"❌ ERROR: {auth_error}")
         return
+    
+    global HEADERS
+    HEADERS = build_headers(github_token)
+    print(f"🔐 Authentication mode: {'GitHub App' if auth_mode == 'app' else 'Token'}")
+    
+    if auth_mode == "token":
+        validate_token_scopes(github_token)
 
     # ========================================================================
     # STEP 2: Determine what we're auditing (Organization vs Personal)

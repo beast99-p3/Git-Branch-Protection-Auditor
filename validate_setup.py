@@ -6,13 +6,14 @@ Run this before the main auditor to verify your configuration.
 import os
 import sys
 import requests
+from auth_utils import load_env_file, get_secret, get_github_token_and_mode, build_headers
 
 def validate_env():
     """Check if required environment variables are set."""
     print("🔍 Checking environment variables...")
     
     github_org = os.getenv("GITHUB_ORG")
-    github_token = os.getenv("GITHUB_TOKEN")
+    auth_mode = (os.getenv("GITHUB_AUTH_MODE") or "token").strip().lower()
     
     if not github_org:
         print("  ❌ GITHUB_ORG not set")
@@ -20,12 +21,31 @@ def validate_env():
     else:
         print(f"  ✅ GITHUB_ORG: {github_org}")
     
-    if not github_token:
-        print("  ❌ GITHUB_TOKEN not set")
-        return False
-    else:
+    if auth_mode in ("token", "pat", ""):
+        github_token = get_secret("GITHUB_TOKEN")
+        if not github_token:
+            print(
+                "  ❌ GITHUB_TOKEN not set (or GITHUB_TOKEN_FILE / GITHUB_TOKEN_COMMAND missing)"
+            )
+            return False
         token_preview = github_token[:10] + "..." if len(github_token) > 10 else "***"
-        print(f"  ✅ GITHUB_TOKEN: {token_preview}")
+        print(f"  ✅ Token source resolved: {token_preview}")
+    elif auth_mode in ("app", "github_app"):
+        app_id = os.getenv("GITHUB_APP_ID")
+        app_key = get_secret("GITHUB_APP_PRIVATE_KEY")
+        if not app_id:
+            print("  ❌ GITHUB_APP_ID not set for app auth mode")
+            return False
+        if not app_key:
+            print(
+                "  ❌ GITHUB_APP_PRIVATE_KEY not set "
+                "(or GITHUB_APP_PRIVATE_KEY_FILE / GITHUB_APP_PRIVATE_KEY_COMMAND missing)"
+            )
+            return False
+        print("  ✅ GitHub App configuration variables found")
+    else:
+        print("  ❌ GITHUB_AUTH_MODE must be 'token' or 'app'")
+        return False
     
     return True
 
@@ -33,12 +53,12 @@ def validate_token_permissions():
     """Test if the GitHub token has correct permissions."""
     print("\n🔑 Validating GitHub token permissions...")
     
-    github_token = os.getenv("GITHUB_TOKEN")
-    headers = {
-        "Authorization": f"Bearer {github_token}",
-        "Accept": "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28"
-    }
+    try:
+        github_token, mode = get_github_token_and_mode()
+    except RuntimeError as err:
+        print(f"  ❌ Failed to resolve authentication: {err}")
+        return False
+    headers = build_headers(github_token)
     
     # Test token validity by fetching user info
     response = requests.get("https://api.github.com/user", headers=headers)
@@ -51,18 +71,22 @@ def validate_token_permissions():
         return False
     
     user_data = response.json()
-    print(f"  ✅ Token valid for user: {user_data.get('login')}")
+    actor = user_data.get('login') or user_data.get('name') or "unknown"
+    print(f"  ✅ Authentication valid for actor: {actor} ({mode})")
     
     # Check token scopes
     scopes = response.headers.get('X-OAuth-Scopes', '').split(', ')
     print(f"  📋 Token scopes: {', '.join(scopes)}")
     
     required_scopes = {'repo', 'read:org'}
-    has_required = any(s in scopes for s in required_scopes)
+    has_required = all(s in scopes for s in required_scopes) if scopes else False
     
     if not has_required:
-        print(f"  ⚠️  Warning: Token may need 'repo' and 'read:org' scopes")
-        print(f"     Current scopes: {scopes}")
+        if mode == "token":
+            print(f"  ⚠️  Warning: Token may need 'repo' and 'read:org' scopes")
+            print(f"     Current scopes: {scopes}")
+        else:
+            print("  ℹ️  Scope headers are not always present for GitHub App tokens.")
     
     return True
 
@@ -71,13 +95,8 @@ def validate_org_access():
     print("\n🏢 Validating organization access...")
     
     github_org = os.getenv("GITHUB_ORG")
-    github_token = os.getenv("GITHUB_TOKEN")
-    
-    headers = {
-        "Authorization": f"Bearer {github_token}",
-        "Accept": "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28"
-    }
+    github_token, _ = get_github_token_and_mode()
+    headers = build_headers(github_token)
     
     # Try to fetch org info
     response = requests.get(f"https://api.github.com/orgs/{github_org}", headers=headers)
@@ -143,14 +162,8 @@ def main():
     print()
     
     # Load .env file if it exists
-    if os.path.exists(".env"):
+    if load_env_file(".env"):
         print("📄 Loading .env file...")
-        with open(".env", "r") as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith("#") and "=" in line:
-                    key, value = line.split("=", 1)
-                    os.environ[key.strip()] = value.strip()
         print("  ✅ .env loaded\n")
     else:
         print("⚠️  No .env file found. Using system environment variables.\n")

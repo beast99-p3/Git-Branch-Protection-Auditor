@@ -75,6 +75,16 @@ Edit the `.env` file (already created for you):
 GITHUB_ORG=your-org-name
 GITHUB_TOKEN=ghp_yourPersonalAccessToken
 CREATE_ISSUES=false
+
+# Optional secure secret sources (instead of GITHUB_TOKEN)
+# GITHUB_TOKEN_FILE=/run/secrets/github_token
+# GITHUB_TOKEN_COMMAND=aws secretsmanager get-secret-value --secret-id github/auditor/token --query SecretString --output text
+
+# Optional GitHub App auth mode
+# GITHUB_AUTH_MODE=app
+# GITHUB_APP_ID=123456
+# GITHUB_APP_INSTALLATION_ID=789012
+# GITHUB_APP_PRIVATE_KEY_FILE=/run/secrets/github_app_private_key.pem
 ```
 
 **Generate a token**: [https://github.com/settings/tokens](https://github.com/settings/tokens)
@@ -92,6 +102,8 @@ This checks:
 - ✅ Python dependencies are installed
 - ✅ GitHub token is valid
 - ✅ Organization is accessible
+
+If `GITHUB_AUTH_MODE=app`, the validator also checks GitHub App credentials and installation-token generation.
 
 #### 4. Run the Auditor
 
